@@ -1,5 +1,7 @@
 # 3D Simulation Super-Resolution
 
+[<img src="title_authors.png" width="1024"/>](title_authors.png)
+
 Details coming
 
 # Installation

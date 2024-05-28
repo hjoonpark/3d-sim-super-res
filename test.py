@@ -336,7 +336,7 @@ def run():
     model = model.to(gDevice)
     
     # Enable for faster inference
-    FASTER_INFERENCE = False
+    FASTER_INFERENCE = 1
     if FASTER_INFERENCE:
         model = torch.compile(model, mode="max-autotune")
     

@@ -331,23 +331,20 @@ class SirenNet(nn.Module):
 
 # ==================================================================================== # 
 def run():
-    #torch.dynamo.config.suppress_errors = True
+    """
+    For further optimization using onnx: https://pytorch.org/docs/stable/onnx.html
+    """
+    
+    # INIT MODEL
     model = SuperRes()
     model = model.to(gDevice)
-    
-    # Enable for faster inference
-    FASTER_INFERENCE = 1
-    if FASTER_INFERENCE:
-        model = torch.compile(model, mode="max-autotune")
-    
     model.eval()
     
     for param in model.parameters():
         param.grad = None
 
-    batch_size = 1
-
     # INIT LOGGERS
+    batch_size = 1
     repetitions = 5
     timings=np.zeros((repetitions,1))
 
@@ -375,9 +372,9 @@ def run():
             timings[rep] = curr_time
 
     mean_syn = np.sum(timings) / repetitions
-    print("-------------------------------------------")
+    print("--------------------------------------")
     print("iterations = {}\naverage = {:.03f} ms".format(repetitions, mean_syn))
-    print("-------------------------------------------")
+    print("--------------------------------------")
 
 if __name__ == "__main__":
     print("\nStart")

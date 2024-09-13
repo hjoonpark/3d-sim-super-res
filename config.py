@@ -12,13 +12,18 @@ def str2bool(v):
 
 def load_config(mode: str):
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--result_dir', type=str, default='./result', help='result directory')
     if mode == 'train':
         parser.add_argument('--flist_lowres_path', type=str, default='flist/train/lowres.txt', help='.txt file containing a list of data paths')
         parser.add_argument('--flist_highres_path', type=str, default='flist/train/highres.txt', help='.txt file containing a list of data paths')
-        parser.add_argument('--n_epochs', type=int, default=100, help='number of trainning epochs')
+        parser.add_argument('--n_epochs', type=int, default=10000, help='number of trainning epochs')
         parser.add_argument('--lr', type=float, default=5e-4, help='learning rate')
         parser.add_argument('--w_zreg', type=float, default=0.1, help='z regularization weight')
         parser.add_argument('--w_fn', type=float, default=0.1, help='face normal loss weight')
+        parser.add_argument('--print_iter', type=int, default=10, help='print frequency')
+        parser.add_argument('--plot_iter', type=int, default=1000, help='print frequency')
+        parser.add_argument('--train_ckpt_iter', type=int, default=1000, help='checkpoint frequency')
+        parser.add_argument('--train_ckpt_n_max', type=int, default=3, help='number of training results to save')
     elif mode == 'test':
         parser.add_argument('--flist_lowres_path', type=str, default='flist/test/lowres.txt', help='.txt file containing a list of data paths')
         parser.add_argument('--flist_highres_path', type=str, default='flist/test/highres.txt', help='.txt file containing a list of data paths')
@@ -29,7 +34,7 @@ def load_config(mode: str):
     parser.add_argument('--hrestshape_path', type=str, default='data/highres/00.obj', help='path to high-res restshape mesh')
 
     parser.add_argument('--batch_size', type=int, default=8, help='training batch size')
-    parser.add_argument('--shuffle', type=str2bool, nargs='?', const=True, default=True, help='whether to shuffle dataloader')
+    parser.add_argument('--shuffle', type=str2bool, nargs='?', const=True, default=False, help='whether to shuffle dataloader')
 
     # model
     parser.add_argument('--pos_feat_dim', type=int, default=32, help='dimension of positional encoding')

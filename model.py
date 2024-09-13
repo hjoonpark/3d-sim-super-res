@@ -29,7 +29,7 @@ class SuperRes(nn.Module):
 
         if is_train:
             self.model_names = ["feat_emb", "upscale", "decoder"]
-            self.loss_names = ["recon", "z_reg", "face_normals"]
+            self.loss_names = ["total", "recon", "z_reg", "face_normals"]
             model_params = itertools.chain(\
                 self.net_feat_emb.parameters(), \
                 self.net_upscale.parameters(), \
@@ -64,10 +64,10 @@ class SuperRes(nn.Module):
         self.loss_z_reg = (self.z**2).mean()
         
         # face normal
-        hx_true = self.hrestshape + self.hdx
-        hx_pred = self.hrestshape + self.hdx_pred
-        fn_true = self.compute_face_normals(hx_true, self.hfaces)
-        fn_pred = self.compute_face_normals(hx_pred, self.hfaces)
+        self.hx_true = self.hrestshape + self.hdx
+        self.hx_pred = self.hrestshape + self.hdx_pred
+        fn_true = self.compute_face_normals(self.hx_true, self.hfaces)
+        fn_pred = self.compute_face_normals(self.hx_pred, self.hfaces)
         self.loss_face_normals = (1 - F.cosine_similarity(fn_pred, fn_true, dim=-1)).mean()
 
         self.loss_total = self.loss_recon + self.w_zreg*self.loss_z_reg + self.w_fn*self.loss_face_normals

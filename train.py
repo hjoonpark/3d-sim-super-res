@@ -7,6 +7,10 @@ from config import load_config
 from dataset import Dataset
 from model import SuperRes
 
+import matplotlib.pyplot as plt
+
+def stat(ldx):
+    return '{} min/max=({:.5f}, {:.5f}) ({:.5f}, {:.5f})'.format(ldx.shape, ldx.min(), ldx.max(), ldx.mean(), ldx.std())
 
 def train(config):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -15,6 +19,9 @@ def train(config):
     # Output paths
     log_path = os.path.join(res_dir, 'log.txt')
     ckpt_dir = os.path.join(res_dir, 'train_ckpt')
+    model_dir = os.path.join(res_dir, 'model')
+    for d in [ckpt_dir, model_dir]:
+        os.makedirs(d, exist_ok=True)
 
     # Init dataset
     dataset = Dataset(config)
@@ -24,6 +31,11 @@ def train(config):
     # Init model
     model = SuperRes(is_train=True, config=config, lrestshape=dataset.lrestshape, hrestshape=dataset.hrestshape, hfaces=dataset.hfaces, device=device)
     model = model.to(device)
+    model.train()
+
+    n_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("n_trainable_params={:,}".format(n_trainable_params))
+
     loss_dic = {}
     for loss_name in model.loss_names:
         loss_dic[loss_name] = []
@@ -32,9 +44,14 @@ def train(config):
     n_epochs = config.n_epochs
     n_iter = 0
     for epoch in range(n_epochs+1):
+
+        # ldxs, hdxs = [], []
         for batch_idx, data in enumerate(dataloader):
             model.set_input(data)
             model.optimize_parameters()
+
+            # ldxs.append(data['ldx'])
+            # hdxs.append(data['hdx'])
 
             losses = model.get_losses()
             for ln, l in losses.items():
@@ -42,7 +59,8 @@ def train(config):
 
             # print
             if n_iter % config.print_iter == 0:
-                log_str = "{} iter:{} epoch:{} | {}".format(timestamp(), n_iter, epoch+1, n_epochs, loss2str(losses))
+                lr = model.optimizer.param_groups[0]['lr']
+                log_str = "{} iter:{} epoch:{} lr:{:.6f} | {}".format(timestamp(), n_iter, epoch, lr, loss2str(losses))
                 print(log_str)
                 with open(log_path, 'a+') as f:
                     f.write(f'{log_str}\n')
@@ -51,6 +69,7 @@ def train(config):
             if n_iter % config.plot_iter == 0:
                 save_path = os.path.join(res_dir, 'losses.jpg')
                 plot_losses(save_path, n_iter, epoch, loss_dic)
+                print('loss plot: {}'.format(save_path))
 
             # training checkpoint
             if n_iter % config.train_ckpt_iter == 0:
@@ -68,8 +87,45 @@ def train(config):
                     write_obj(save_path, hx_pred, faces=dataset.hfaces)
                     save_path = os.path.join(ckpt_dir_epoch, '{:02d}_low.obj'.format(frame))
                     write_obj(save_path, lx, faces=dataset.lfaces)
-
+                print('training checkpoint: {}'.format(ckpt_dir_epoch))
             n_iter += 1
+
+        # ldxs = torch.cat(ldxs).view(-1, 3).numpy()
+        # hdxs = torch.cat(hdxs).view(-1, 3).numpy()
+        # dims = ['dx', 'dy', 'dz']
+        # fig = plt.figure(figsize=(10, 5))
+        # L = 1.1
+        # for d in range(3):
+        #     ax = fig.add_subplot(2,3,d+1)
+        #     X = ldxs[:, d].flatten()
+        #     ax.hist(X, bins=100)
+        #     ax.set_yscale('log')
+        #     ax.set_xlim([-L, L])
+        #     ax.set_title('ldx {} {}\n({:.2f}, {:.2f}) ({:.2f}, {:.2f})'.format(dims[d], X.shape, X.min(), X.max(), X.mean(), X.std()))
+
+        #     ax = fig.add_subplot(2,3,3+d+1)
+        #     X = hdxs[:, d].flatten()
+        #     ax.hist(X, bins=100)
+        #     ax.set_yscale('log')
+        #     ax.set_xlim([-L, L])
+        #     ax.set_title('hdx {} {}\n({:.2f}, {:.2f}) ({:.2f}, {:.2f})'.format(dims[d], X.shape, X.min(), X.max(), X.mean(), X.std()))
+        # plt.tight_layout()
+        # save_path = 'hist.png'
+        # plt.savefig(save_path, dpi=300)
+        # print(save_path)
+        # exit()
+
+        # save model
+        is_last_epoch = (epoch == n_epochs)
+        if epoch > 0 and epoch % config.save_model_epoch == 0 or is_last_epoch:
+            save_path = os.path.join(model_dir, 'model_latest.pth')
+            model.save_networks(save_path)
+            print('model saved: {}'.format(save_path))
+
+        # update learning rate
+        lr = model.optimizer.param_groups[0]['lr']
+        if lr > 1e-6:
+            model.update_learning_rate()
 
 if __name__ == "__main__":
     parser = load_config('train')
@@ -77,6 +133,6 @@ if __name__ == "__main__":
     
     os.makedirs(config.result_dir, exist_ok=True)
 
-    print("\nStart")
+    print("Start")
     train(config)
     print("Done")

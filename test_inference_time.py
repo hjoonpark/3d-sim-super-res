@@ -1,107 +1,40 @@
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math, itertools
+import math
+import numpy as np
+
+# from torch.profiler import profile, record_function, ProfilerActivity
+
+gDevice = "cuda:0" # "cpu"
+
+# ======================================================================================= # 
+# Parameters
+M = 35637                     # Number of vertices on high-res surface mesh
+N = 15872                     # Number of vertices on low-res volumetric mesh
+gKnn = 5                      # Number of KNN neighbors in Feature Embedding modules
+gK = 20                       # Number of local neighbors in Upsampling module
+emb_feat_dims = [35, 64, 128] # Number of latent dimensions in Feature Embedding modules
+pos_feat_dim = 32             # Dimension of positional encoding
+w_up_feat_dim = 128           # Latent dimension of Upsampling module
+n_upscale_layers = 8          # Number of layers in Upsampling module
+decoder_dim = 256             # Latent dimension of Decoder module
+# ======================================================================================= # 
 
 class SuperRes(nn.Module):
-    def __init__(self, is_train, config, lrestshape, hrestshape, hfaces, device):
+    def __init__(self):
         super(SuperRes, self).__init__()
-        self.device = device
-        self.is_train = is_train
 
-        self.lrestshape = lrestshape.unsqueeze(0) # (1, N, 3)
-        self.hrestshape = hrestshape.unsqueeze(0).to(device) # (1, M, 3)
-        self.hfaces = hfaces
+        self.hrestshape = torch.rand(1, M, 3, dtype=torch.float)
+        self.lrestshape = torch.rand(1, N, 3, dtype=torch.float)
 
-        N = self.lrestshape.shape[1]
-        tet2tet_dist_idx = torch.tensor(np.load(config.tet2tet_dist_idx_path)).unsqueeze(0)[..., :config.knn]
-        tet2tet_dist = torch.tensor(np.load(config.tet2tet_dist_path)).unsqueeze(0)[..., :config.knn]
-        surf2tet_dist_idx = torch.tensor(np.load(config.surf2tet_dist_idx_path)).unsqueeze(0)[..., :config.upK]
-        surf2tet_dist = torch.tensor(np.load(config.surf2tet_dist_path)).unsqueeze(0)[..., :config.upK]
+        self.net_pos_emb = PosEmb()
+        self.net_feat_emb = FeatEmb()
+        self.net_upscale = Upscale()
+        self.net_decoder = Decoder()
+        print("SuperRes init")
 
-        self.net_pos_emb = PosEmb(config=config, N=N)
-        self.net_feat_emb = FeatEmb(config=config, N=N, tet2tet_dist=tet2tet_dist, tet2tet_dist_idx=tet2tet_dist_idx)
-        self.net_upscale = Upscale(config=config, surf2tet_dist=surf2tet_dist, surf2tet_dist_idx=surf2tet_dist_idx, hrestshape=self.hrestshape, lrestshape=self.lrestshape)
-        self.net_decoder = Decoder(config=config)
-
-        self.model_names = ["net_feat_emb", "net_upscale", "net_decoder"]
-
-        if is_train:
-            self.w_recon = config.w_recon
-            self.w_zreg = config.w_zreg
-            self.w_fn = config.w_fn
-            self.loss_names = ["total", "recon", "z_reg", "face_normals"]
-            model_params = itertools.chain(\
-                self.net_pos_emb.parameters(), \
-                self.net_feat_emb.parameters(), \
-                self.net_upscale.parameters(), \
-                self.net_decoder.parameters()
-            )
-
-            self.optimizer = torch.optim.Adam(model_params, lr=config.lr)
-            self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=config.lr_decay_epoch, gamma=config.lr_decay_gamma)
-
-            self.criteria_recon = torch.nn.L1Loss(reduce='sum')
-
-    def stat(self, ldx):
-        return '{} min/max=({:.5f}, {:.5f}) ({:.5f}, {:.5f})'.format(ldx.shape, ldx.min(), ldx.max(), ldx.mean(), ldx.std())
-
-    def set_input(self, data):
-        self.frame = data["frame"]
-        self.ldx = data['ldx'].to(self.device)
-        self.hdx = data['hdx'].to(self.device)
-        print()
-        print('ldx:', self.stat(self.ldx))
-        print('hdx:', self.stat(self.hdx))
-
-    def optimize_parameters(self):
-        # forward
-        self.hdx_pred = self.forward(self.ldx)
-        print('hdx_pred:', self.stat(self.hdx_pred))
-
-        # losses
-        self.compute_losses()
-
-        # backward
-        self.optimizer.zero_grad()
-        self.loss_total.backward()
-        self.optimizer.step()
-
-    def compute_losses(self):
-        B = len(self.frame)
-
-        # reconstruction loss
-        self.loss_recon = self.w_recon*self.criteria_recon(self.hdx_pred, self.hdx) / B
-        
-        # latent regularization
-        self.loss_z_reg = self.w_zreg*(torch.abs(self.z)).mean()
-        
-        # face normal
-        self.hx_true = self.hrestshape + self.hdx
-        self.hx_pred = self.hrestshape + self.hdx_pred
-        fn_true = self.compute_face_normals(self.hx_true, self.hfaces)
-        fn_pred = self.compute_face_normals(self.hx_pred, self.hfaces)
-        self.loss_face_normals = self.w_fn*(1 - F.cosine_similarity(fn_pred, fn_true, dim=-1)).mean()
-
-        self.loss_total = self.loss_recon# + self.loss_z_reg + self.loss_face_normals
-    
-    def get_losses(self):
-        loss = {}
-        for name in self.loss_names:
-            loss[name] = getattr(self, f'loss_{name}')
-        return loss
-
-    def compute_face_normals(self, vertices, faces):
-        v1 = vertices[:, faces[:, 0]]
-        v2 = vertices[:, faces[:, 1]]
-        v3 = vertices[:, faces[:, 2]]
-        
-        fn = torch.cross(v2-v1, v3-v1, dim=-1)
-        fn = fn / torch.linalg.norm(fn, dim=-1).unsqueeze(-1)
-        return fn
-
-    def forward(self, ldx):
+    def forward(self, lx, ldx):
         # position embedding
         pos_emb = self.net_pos_emb(ldx)
 
@@ -114,49 +47,22 @@ class SuperRes(nn.Module):
         latent_code = self.net_upscale(self.z)
 
         # reconstruct
-        hdx_pred = self.net_decoder(latent_code)
+        hdx_pred = self.net_decoder(self.hrestshape.repeat(latent_code.shape[0], 1, 1), latent_code)
         return hdx_pred
 
-    def save_networks(self, save_path):
-        save_dict = {}
-        for name in self.model_names:
-            if isinstance(name, str):
-                net = getattr(self, name)
-                if isinstance(net, torch.nn.DataParallel) or isinstance(net,
-                        torch.nn.parallel.DistributedDataParallel):
-                    net = net.module
-                save_dict[name] = net.state_dict()
-        save_dict['optimizer'] = self.optimizer.state_dict()
-        save_dict['scheduler'] = self.scheduler.state_dict()
-        torch.save(save_dict, save_path)
-
-    def load_networks(self, pretrained_path):
-        state_dict = torch.load(pretrained_path, map_location=self.device)
-        for name in self.model_names:
-            if isinstance(name, str):
-                net = getattr(self, name)
-                if isinstance(net, torch.nn.DataParallel):
-                    net = net.module
-                net.load_state_dict(state_dict[name])
-        
-        # TODO - load saved optimizer and scheduler too, if needed
-        print("model loaded from: {}".format(pretrained_path))
-
-    def update_learning_rate(self):
-        self.scheduler.step()
-
 class PosEmb(nn.Module):
-    def __init__(self, config, N):
+    def __init__(self):
         super(PosEmb, self).__init__()
-        self.pos_emb = self._define_pos_emb(config.pos_feat_dim, N)
+        self.pos_emb = self._define_pos_emb(N, pos_feat_dim)
         self.pos_emb.requires_grad = False
         
+        print("  PosEmb init")
     def forward(self, x):
         B = x.shape[0]
-        pos_emb = self.pos_emb.unsqueeze(0).repeat(B, 1, 1).to(x.device)
+        pos_emb = self.pos_emb.unsqueeze(0).repeat(B, 1, 1).to(gDevice)
         return pos_emb
 
-    def _define_pos_emb(self, emb_dim, n_verts):
+    def _define_pos_emb(self, n_verts, emb_dim):
         pos = torch.arange(0, n_verts, dtype=torch.float) # same as vertex index
         pos = pos.unsqueeze(dim=1) # (n,) -> (n, 1)
         _2i = torch.arange(0, emb_dim, step=2, dtype=torch.float)
@@ -168,23 +74,22 @@ class PosEmb(nn.Module):
         return pos_emb
 
 class FeatEmb(nn.Module):
-    def __init__(self, config, N, tet2tet_dist, tet2tet_dist_idx):
+    def __init__(self):
         super(FeatEmb, self).__init__()
 
         self.blocks = nn.ModuleList()
-        emb_feat_dims = [int(d) for d in config.emb_feat_dims.split()]
-        self.blocks.append(EmbModule(0, N, emb_feat_dims[0], emb_feat_dims[1], config.knn, tet2tet_dist, tet2tet_dist_idx))
-        self.blocks.append(EmbModule(1, N, emb_feat_dims[1], emb_feat_dims[2], config.knn, tet2tet_dist, tet2tet_dist_idx))
+        self.blocks.append(EmbModule(index=0, in_dim=emb_feat_dims[0], out_dim=emb_feat_dims[1]))
+        self.blocks.append(EmbModule(index=1, in_dim=emb_feat_dims[1], out_dim=emb_feat_dims[2]))
 
-        self.drop_out = nn.Dropout(p=config.dropout)
-
-        dim = config.pos_feat_dim
+        self.drop_out = nn.Dropout(p=0.2)
         self.fc_initial = nn.Sequential(
-            nn.Linear(3, dim),
+            nn.Linear(3, pos_feat_dim),
             nn.LeakyReLU(0.2, True),
-            nn.Linear(dim, dim)
+            nn.Linear(pos_feat_dim, pos_feat_dim)
         )
-        self.drop_out = nn.Dropout(p=config.dropout)
+        
+        self.drop_out = nn.Dropout(p=0.2)
+        print("  FeatEmb init")
 
     def forward(self, feat):
         outputs = []
@@ -195,20 +100,19 @@ class FeatEmb(nn.Module):
         return out
 
 class EmbModule(nn.Module):
-    def __init__(self, index, N, in_dim, out_dim, knn, tet2tet_dist, tet2tet_dist_idx):
+    def __init__(self, index, in_dim, out_dim):
         super(EmbModule, self).__init__()
         self.index = index
-        self.knn = knn
 
-        self.tet2tet_dist = tet2tet_dist
-        self.tet2tet_dist_idx = tet2tet_dist_idx
+        self.tet2tet_dist_idx = torch.randint(0, N-1, (1, N, gKnn), dtype=torch.long).to(gDevice)
+        self.tet2tet_dist_mtx = torch.rand((1, N, gKnn), dtype=torch.float).to(gDevice)
 
         # edge conv
         self.edge_conv = nn.Sequential(
             nn.Conv2d(2*in_dim, 2*out_dim, kernel_size=1, bias=False),
             nn.BatchNorm2d(2*out_dim),
             nn.LeakyReLU(0.2, True),
-            nn.Conv2d(2*out_dim, out_dim, kernel_size=1, bias=False)
+            nn.Conv2d(2*out_dim, out_dim, kernel_size=1, bias=True)
         )
         self.pairwise_distance = None
 
@@ -222,17 +126,18 @@ class EmbModule(nn.Module):
             nn.Conv1d(2*out_dim, out_dim, kernel_size=1, stride=1, bias=False),
             nn.BatchNorm1d(out_dim),
             nn.LeakyReLU(0.2, True),
-            nn.Conv1d(out_dim, out_dim, kernel_size=1, stride=1, bias=False)
+            nn.Conv1d(out_dim, out_dim, kernel_size=1, stride=1, bias=True)
         )
+        print("  EmbModule init")
 
     def forward(self, feat):
         B, n, feat_dim = feat.shape
         # ================================================ #
         # edge conv
         if self.index == 0:
-            feat1, _ = get_graph_feature(feat.transpose(1, 2), k=self.knn, idx=self.tet2tet_dist_idx.repeat((B, 1, 1)), return_dist=False)
+            feat1, _ = get_graph_feature(feat.transpose(1, 2), k=gKnn, idx=self.tet2tet_dist_idx.repeat((B, 1, 1)), return_dist=False)
         else:
-            feat1, _ = get_graph_feature(feat.transpose(1, 2), k=self.knn, idx=None, return_dist=False)
+            feat1, _ = get_graph_feature(feat.transpose(1, 2), k=gKnn, idx=None, return_dist=False)
         feat1 = self.edge_conv(feat1)
         feat1 = feat1.max(-1, keepdim=False)[0] # (B, n, f)
 
@@ -251,37 +156,34 @@ class EmbModule(nn.Module):
         return feat_out # (B, n, feat_dim) = same as input
 
 class Upscale(nn.Module):
-    def __init__(self, config, surf2tet_dist, surf2tet_dist_idx, lrestshape, hrestshape):
+    def __init__(self):
         super(Upscale, self).__init__()
 
-        upK = config.upK
-
-        # for querying weights
-        hx_pos_centers = hrestshape[:, :, None, :].repeat((1, 1, upK, 1))
-        self.idx = surf2tet_dist_idx[:, :, :upK]
-        lx_pos_grouped = self.index_points(lrestshape, self.idx).to(hx_pos_centers.device)
-        dists = surf2tet_dist[:, :, :upK, None].to(hx_pos_centers.device)
-        self.w_up_inputs = torch.cat((hx_pos_centers, lx_pos_grouped, dists), dim=-1).float()
-        self.w_up_inputs = self.w_up_inputs.repeat(config.batch_size, 1, 1, 1).permute(0, 3, 1, 2)
+        hx_pos_centers = torch.rand(1, M, gK, 3, dtype=torch.float)
+        lx_pos_grouped = torch.rand(1, M, gK, 3, dtype=torch.float)
+        dists = torch.rand(1, M, gK, 1, dtype=torch.float)
+        self.idx = torch.randint(0, N-1, (1, M, gK), dtype=torch.long)
+        self.w_up_inputs = torch.cat((hx_pos_centers, lx_pos_grouped, dists), dim=-1)
+        self.w_up_inputs = self.w_up_inputs.permute(0, 3, 1, 2).to(gDevice)
         self.w_up_inputs.requires_grad = False
 
         in_dim = 7
         conv_weights = []
-        out_dim = config.w_up_feat_dim
-        for _ in range(config.n_upscale_layers):
+        for _ in range(n_upscale_layers):
             conv_weights.extend([
-                nn.Conv2d(in_dim, out_dim, kernel_size=1, stride=1, padding=0, bias=False),
-                nn.BatchNorm2d(out_dim),
+                nn.Conv2d(in_dim, w_up_feat_dim, kernel_size=1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(w_up_feat_dim),
                 Sine(),
             ])
-            in_dim = out_dim
-        conv_weights.extend([nn.Conv2d(out_dim, 1, kernel_size=1, stride=1, padding=0)])
+            in_dim = w_up_feat_dim
+        conv_weights.extend([nn.Conv2d(w_up_feat_dim, 1, kernel_size=1, stride=1, padding=0)])
         self.conv_weights = nn.Sequential(*conv_weights)
+        print("  Upscale init")
 
     def forward(self, x_feat):
         B, n_ldx, feat_dim = x_feat.shape
 
-        query_feat = self.w_up_inputs[:B, :, :, :].to(x_feat.device)
+        query_feat = self.w_up_inputs[0:B, :, :, :]
         self.w = torch.softmax(self.conv_weights(query_feat).permute(0, 2, 3, 1), dim=2) 
         x_feat_grouped = self.index_points(x_feat, self.idx)
         feat_H = torch.sum(self.w*x_feat_grouped, dim=2)
@@ -289,19 +191,19 @@ class Upscale(nn.Module):
         return feat_H
     
     def index_points(self, points, indices):
+        device = points.device
         b, m, k = indices.shape
 
-        batch_indices = torch.arange(b).view(b, 1, 1).expand(-1, m, k)
+        batch_indices = torch.arange(b, device=device).view(b, 1, 1).expand(-1, m, k)
         res = points[batch_indices, indices, :]
         return res
         
 class Decoder(nn.Module):
-    def __init__(self, config):
+    def __init__(self):
         super(Decoder, self).__init__()
 
         # compute input dim
-        h_dim = config.decoder_dim
-        emb_feat_dims = [int(d) for d in config.emb_feat_dims.split()]
+        h_dim = decoder_dim
         latent_dim = sum(emb_feat_dims)
         dims = [latent_dim, h_dim, h_dim//2, h_dim//4, h_dim//8, h_dim//16, 3]
         self.decoder = SirenNet(
@@ -309,8 +211,9 @@ class Decoder(nn.Module):
             final_activation=None,
             w0_initial=30.
         )
+        print("  Decoder init")
 
-    def forward(self, z):
+    def forward(self, x, z):
         hdx = self.decoder(z)
         return hdx
 
@@ -325,7 +228,7 @@ def knn(x, k, return_dist=False):
     else:
         return idx, None
 
-def get_graph_feature(x, k, idx=None, return_dist=False):
+def get_graph_feature(x, k=20, idx=None, return_dist=False):
     batch_size = x.size(0)
     num_points = x.size(2)
     x = x.view(batch_size, -1, num_points)
@@ -336,7 +239,7 @@ def get_graph_feature(x, k, idx=None, return_dist=False):
         pairwise_distance = None
 
     idx_base = torch.arange(0, batch_size, device=x.device).view(-1, 1, 1)*num_points
-    idx = idx.to(idx_base.device) + idx_base
+    idx = idx + idx_base
 
     idx = idx.view(-1)
     _, num_dims, _ = x.size()
@@ -425,3 +328,55 @@ class SirenNet(nn.Module):
                 x *= rearrange(mod, 'd -> () d')
 
         return self.last_layer(x)
+
+# ==================================================================================== # 
+def run():
+    """
+    For further optimization using onnx: https://pytorch.org/docs/stable/onnx.html
+    """
+    
+    # INIT MODEL
+    model = SuperRes()
+    model = model.to(gDevice)
+    model.eval()
+    
+    for param in model.parameters():
+        param.grad = None
+
+    # INIT LOGGERS
+    batch_size = 1
+    repetitions = 5
+    timings=np.zeros((repetitions,1))
+
+    # INIT DATA
+    lx_restshape = torch.rand(batch_size, N, 3, dtype=torch.float).to(gDevice) # vertices of low-res simulation mesh in restshape
+    ldx = torch.rand(batch_size, N, 3, dtype=torch.float).to(gDevice) # per-vertex displacements from restshape
+
+    # GPU WARMUP
+    for _ in range(3):
+        model(lx_restshape, ldx)
+
+    # RUN FORWARD
+    with torch.no_grad():
+        for rep in range(repetitions):
+            starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+
+            starter.record()
+            # ---------------------------------- #
+            hdx_pred = model(lx_restshape, ldx) # Final high-res surface is obtained by: hx = hx_restshape + hdx_pred
+            # ---------------------------------- #
+            ender.record()
+
+            torch.cuda.synchronize()
+            curr_time = starter.elapsed_time(ender)
+            timings[rep] = curr_time
+
+    mean_syn = np.sum(timings) / repetitions
+    print("--------------------------------------")
+    print("iterations = {}\naverage = {:.03f} ms".format(repetitions, mean_syn))
+    print("--------------------------------------")
+
+if __name__ == "__main__":
+    print("\nStart")
+    run()
+    print("Done")

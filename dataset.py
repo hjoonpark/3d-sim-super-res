@@ -6,9 +6,13 @@ from util import read_obj
 class Dataset(data.Dataset):
     def __init__(self, config):
         # load data paths
-        self.lowres_paths  = [path.strip() for path in open(config.flist_lowres_path,  'r').readlines()]
-        self.highres_paths = [path.strip() for path in open(config.flist_highres_path, 'r').readlines()]
-        assert len(self.lowres_paths) == len(self.highres_paths)
+        self.lowres_paths, self.highres_paths = [], []
+        with open(config.flist_path, 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                l = line.strip().split(' ')
+                self.lowres_paths.append(l[0])
+                self.highres_paths.append(l[1])
 
         # load restshapes
         self.lrestshape, self.lfaces = read_obj(config.lrestshape_path)

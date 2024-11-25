@@ -75,7 +75,7 @@ def train(config):
             if n_iter % config.train_ckpt_iter == 0:
                 ckpt_dir_epoch = os.path.join(ckpt_dir, '{:04d}'.format(n_iter))
                 os.makedirs(ckpt_dir_epoch, exist_ok=True)
-                for batch_idx in range(config.train_ckpt_n_max):
+                for batch_idx in range(min(config.train_ckpt_n_max, len(model.frame))):
                     frame = model.frame[batch_idx]
                     hx_true = model.hx_true[batch_idx].detach().cpu().numpy()
                     hx_pred = model.hx_pred[batch_idx].detach().cpu().numpy()

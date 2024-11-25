@@ -51,14 +51,10 @@ class SuperRes(nn.Module):
         self.frame = data["frame"]
         self.ldx = data['ldx'].to(self.device)
         self.hdx = data['hdx'].to(self.device)
-        print()
-        print('ldx:', self.stat(self.ldx))
-        print('hdx:', self.stat(self.hdx))
 
     def optimize_parameters(self):
         # forward
         self.hdx_pred = self.forward(self.ldx)
-        print('hdx_pred:', self.stat(self.hdx_pred))
 
         # losses
         self.compute_losses()
@@ -84,7 +80,7 @@ class SuperRes(nn.Module):
         fn_pred = self.compute_face_normals(self.hx_pred, self.hfaces)
         self.loss_face_normals = self.w_fn*(1 - F.cosine_similarity(fn_pred, fn_true, dim=-1)).mean()
 
-        self.loss_total = self.loss_recon# + self.loss_z_reg + self.loss_face_normals
+        self.loss_total = self.loss_recon + self.loss_z_reg + self.loss_face_normals
     
     def get_losses(self):
         loss = {}
@@ -173,8 +169,8 @@ class FeatEmb(nn.Module):
 
         self.blocks = nn.ModuleList()
         emb_feat_dims = [int(d) for d in config.emb_feat_dims.split()]
-        self.blocks.append(EmbModule(0, N, emb_feat_dims[0], emb_feat_dims[1], config.knn, tet2tet_dist, tet2tet_dist_idx))
-        self.blocks.append(EmbModule(1, N, emb_feat_dims[1], emb_feat_dims[2], config.knn, tet2tet_dist, tet2tet_dist_idx))
+        for i in range(len(emb_feat_dims)-1):
+            self.blocks.append(EmbModule(index=i, N=N, in_dim=emb_feat_dims[i], out_dim=emb_feat_dims[i+1], knn=config.knn, tet2tet_dist=tet2tet_dist, tet2tet_dist_idx=tet2tet_dist_idx))
 
         self.drop_out = nn.Dropout(p=config.dropout)
 
@@ -184,7 +180,6 @@ class FeatEmb(nn.Module):
             nn.LeakyReLU(0.2, True),
             nn.Linear(dim, dim)
         )
-        self.drop_out = nn.Dropout(p=config.dropout)
 
     def forward(self, feat):
         outputs = []
@@ -200,8 +195,9 @@ class EmbModule(nn.Module):
         self.index = index
         self.knn = knn
 
-        self.tet2tet_dist = tet2tet_dist
-        self.tet2tet_dist_idx = tet2tet_dist_idx
+        if index == 0:
+            self.tet2tet_dist = tet2tet_dist
+            self.tet2tet_dist_idx = tet2tet_dist_idx
 
         # edge conv
         self.edge_conv = nn.Sequential(
@@ -288,12 +284,17 @@ class Upscale(nn.Module):
 
         return feat_H
     
-    def index_points(self, points, indices):
-        b, m, k = indices.shape
-
-        batch_indices = torch.arange(b).view(b, 1, 1).expand(-1, m, k)
-        res = points[batch_indices, indices, :]
-        return res
+    def index_points(self, points, idx):
+        device = points.device
+        B = points.shape[0]
+        idx = idx.repeat(B, 1, 1)
+        view_shape = list(idx.shape)
+        view_shape[1:] = [1] * (len(view_shape) - 1)
+        repeat_shape = list(idx.shape)
+        repeat_shape[0] = 1
+        batch_indices = torch.arange(B, dtype=torch.long).to(device).view(view_shape).repeat(repeat_shape)
+        new_points = points[batch_indices, idx, :]
+        return new_points
         
 class Decoder(nn.Module):
     def __init__(self, config):

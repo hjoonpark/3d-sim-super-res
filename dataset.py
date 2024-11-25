@@ -28,11 +28,17 @@ class Dataset(data.Dataset):
 
         self.mu = 0.5*(ldx_max + ldx_min)
         self.sigma = 0.5*(ldx_max - ldx_min)
-        self.lrestshape = (self.lrestshape - self.mu) / self.sigma
-        self.hrestshape = (self.hrestshape - self.mu) / self.sigma
+        self.lrestshape = self.normalize(self.lrestshape, self.mu, self.sigma)
+        self.hrestshape = self.normalize(self.hrestshape, self.mu, self.sigma)
 
         # basic caching
         self.cache = {}
+
+    def normalize(self, x, mu, sigma):
+        return (x-mu)/sigma
+    
+    def unnormalize(self, x, mu, sigma):
+        return x*sigma + mu
 
     def __len__(self):
         return len(self.lowres_paths)
@@ -53,8 +59,8 @@ class Dataset(data.Dataset):
             verts_low  = torch.from_numpy(verts_low)
             verts_high = torch.from_numpy(verts_high)
 
-            verts_low = (verts_low-self.mu) / self.sigma
-            verts_high = (verts_high-self.mu) / self.sigma
+            verts_low = self.normalize(verts_low, self.mu, self.sigma)
+            verts_high = self.normalize(verts_high, self.mu, self.sigma)
 
             # compute displacements
             ldx = verts_low - self.lrestshape

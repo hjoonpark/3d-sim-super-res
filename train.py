@@ -45,13 +45,9 @@ def train(config):
     n_iter = 0
     for epoch in range(n_epochs+1):
 
-        # ldxs, hdxs = [], []
         for batch_idx, data in enumerate(dataloader):
             model.set_input(data)
             model.optimize_parameters()
-
-            # ldxs.append(data['ldx'])
-            # hdxs.append(data['hdx'])
 
             losses = model.get_losses()
             for ln, l in losses.items():
@@ -89,31 +85,6 @@ def train(config):
                     write_obj(save_path, lx, faces=dataset.lfaces)
                 print('training checkpoint: {}'.format(ckpt_dir_epoch))
             n_iter += 1
-
-        # ldxs = torch.cat(ldxs).view(-1, 3).numpy()
-        # hdxs = torch.cat(hdxs).view(-1, 3).numpy()
-        # dims = ['dx', 'dy', 'dz']
-        # fig = plt.figure(figsize=(10, 5))
-        # L = 1.1
-        # for d in range(3):
-        #     ax = fig.add_subplot(2,3,d+1)
-        #     X = ldxs[:, d].flatten()
-        #     ax.hist(X, bins=100)
-        #     ax.set_yscale('log')
-        #     ax.set_xlim([-L, L])
-        #     ax.set_title('ldx {} {}\n({:.2f}, {:.2f}) ({:.2f}, {:.2f})'.format(dims[d], X.shape, X.min(), X.max(), X.mean(), X.std()))
-
-        #     ax = fig.add_subplot(2,3,3+d+1)
-        #     X = hdxs[:, d].flatten()
-        #     ax.hist(X, bins=100)
-        #     ax.set_yscale('log')
-        #     ax.set_xlim([-L, L])
-        #     ax.set_title('hdx {} {}\n({:.2f}, {:.2f}) ({:.2f}, {:.2f})'.format(dims[d], X.shape, X.min(), X.max(), X.mean(), X.std()))
-        # plt.tight_layout()
-        # save_path = 'hist.png'
-        # plt.savefig(save_path, dpi=300)
-        # print(save_path)
-        # exit()
 
         # save model
         is_last_epoch = (epoch == n_epochs)

@@ -1,0 +1,89 @@
+[33mcommit 17238015a319030d9092e2f5f5be6c3cfc355448[m[33m ([m[1;36mHEAD -> [m[1;32mdev[m[33m, [m[1;31morigin/dev[m[33m)[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Sun Nov 24 20:02:32 2024 -0600
+
+    cleaned
+
+[33mcommit 4e5aeb70fd4b8f167f584f1d73a4e4794ed4a88e[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Sun Nov 24 20:01:10 2024 -0600
+
+    trains
+
+[33mcommit 941b644d7422ddcbab943312cb22036db6842f93[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Tue Nov 12 18:43:55 2024 -0600
+
+    debugging
+
+[33mcommit cfb2a3538e8ab2cae7bfcaf1ddb72ad36228ce16[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Thu Sep 12 22:04:15 2024 -0500
+
+    training checkpoint
+
+[33mcommit 7f8d0885c733969373ed0b374ef436f3e0bd48b5[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Thu Sep 12 22:04:06 2024 -0500
+
+    training checkpoint
+
+[33mcommit 066bfecf4d6c03aff2db9a4284a3bad13c01c19d[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Thu Sep 12 22:03:23 2024 -0500
+
+    training checkpoint
+
+[33mcommit 917e330e2cfce4d96e5fc727dcad41d305c14c81[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Thu Sep 12 21:25:45 2024 -0500
+
+    trainning in progress
+
+[33mcommit ebcaf4405b04740daa8c08b2a4b95e0e0fd8755d[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Wed Sep 11 21:39:39 2024 -0500
+
+    voxelization added
+
+[33mcommit 3bf98a23d28bce4880a37df8e6b03738d757d771[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Mon May 27 23:46:34 2024 -0500
+
+    readme image
+
+[33mcommit 7125c44d94cf60d605dfcb904616f272a7924706[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Mon May 27 23:16:25 2024 -0500
+
+    readme
+
+[33mcommit 51104b03709be65eb8645b1c39ee1459cdcbeb32[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Mon May 27 23:00:11 2024 -0500
+
+    readme
+
+[33mcommit fdec81b686293822a941851bbf922eefec90f676[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Mon May 27 22:53:46 2024 -0500
+
+    readme
+
+[33mcommit f1f9b293dcadf5895b2bc43f832e4321945bdcb6[m
+Author: hjoonpark <hjoonpark.us@gmail.com>
+Date:   Mon May 27 22:51:38 2024 -0500
+
+    test script added
+
+[33mcommit ea2d37f6507da231712e7840062e244fcfa0389d[m
+Author: Hyojoon Park <54157847+hjoonpark@users.noreply.github.com>
+Date:   Tue Apr 2 15:32:36 2024 -0500
+
+    Update LICENSE
+
+[33mcommit 0daadd68ce7761e1d36bab03fcb2de87287cc3ac[m
+Author: Hyojoon Park <54157847+hjoonpark@users.noreply.github.com>
+Date:   Tue Apr 2 15:31:58 2024 -0500
+
+    Initial commit

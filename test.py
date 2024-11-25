@@ -27,22 +27,22 @@ def test(config):
     model.eval()
 
     # Test
-    lrestshape = model.lrestshape.detach().cpu().numpy()
-    hrestshape = model.hrestshape.detach().cpu().numpy()
+    lrestshape = dataset.unnormalize(model.lrestshape.detach().cpu().numpy(), dataset.mu, dataset.sigma)
+    hrestshape = dataset.unnormalize(model.hrestshape.detach().cpu().numpy(), dataset.mu, dataset.sigma)
     with torch.no_grad():
         for batch_idx, data in enumerate(dataloader):
             model.set_input(data)
             hdx_preds = model.forward(model.ldx)
 
             # dx to full shape
-            hdx_preds = hdx_preds.detach().cpu().numpy()
+            hdx_preds = dataset.unnormalize(hdx_preds.detach().cpu().numpy(), dataset.mu, dataset.sigma)
             highres_pred = hrestshape + hdx_preds
 
             # save obj
             for batch_idx in range(hdx_preds.shape[0]):
                 frame = model.frame[batch_idx]
                 vertices = highres_pred[batch_idx]
-                save_path = os.path.join(test_dir, '{:02d}.obj'.format(frame))
+                save_path = os.path.join(test_dir, '{:03d}.obj'.format(frame))
                 write_obj(save_path, vertices, faces=model.hfaces)
                 print("obj saved: {}".format(save_path))
 
